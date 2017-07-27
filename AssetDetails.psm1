@@ -1,3 +1,4 @@
+ 
 <#
 AssetDetails PowerShell module (hughowens@gmail.com) 
 Copyright (C) 2016 Hugh Owens 
@@ -16,6 +17,25 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>. 
 #>
 
+<#
+ .Synopsis
+  Gathers various information about computer system.
+
+ .Description
+  Gathers various information about computer system for Audit purposes
+
+ .Parameter ConfigFile
+  Location of the config file to use.
+
+
+ .Example
+   # Show a default asset details
+   Get-AssetDetails
+
+ .Example
+   # Get Asset details with aid of a config file
+   Get-AssetDetails -configfile .\Config.xml
+#>
 function Get-AssetDetails{
 	param (
 		[string]$configFile = "",
