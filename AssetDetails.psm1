@@ -20,25 +20,21 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 <#
  .Synopsis
   Gathers various information about computer system.
-
  .Description
   Gathers various information about computer system for Audit purposes
-
  .Parameter ConfigFile
   Location of the config file to use.
-
-
  .Example
    # Show a default asset details
    Get-AssetDetails
-
  .Example
    # Get Asset details with aid of a config file
    Get-AssetDetails -configfile .\Config.xml
 #>
+
 function Get-AssetDetails{
 	param (
-		[string]$configFile = "",
+		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
 		[String]$UseActiveDirectory = $true,
 		[String]$UseOutlookProfile = $false,
 		[String]$CompanyName = "",
@@ -165,6 +161,7 @@ function Get-AssetDetails{
 	$OS=$DETAILSOS.caption
 	$CreatedTime = Get-ItemProperty 'C:\System Volume Information' | select CreationTime
 	$ImageInstallDate = ([datetime] $CreatedTime.CreationTime).ToString('yyyy-MM-dd')
+    $LastBoot = ([datetime] $DETAILSOS.lastbootuptime).ToString('yyyy-MM-dd')
 
 	try{	#Powershell 3.0+
 		$OSInstallDate = ([datetime] $DETAILSOS.installdate).ToString('yyyy-MM-dd')
@@ -234,6 +231,7 @@ function Get-AssetDetails{
 	$obj | add-member -membertype NoteProperty -name "OS Install Date" -value $OSInstallDate
 	$obj | add-member -membertype NoteProperty -name "Operating System" -value $OS
 	$obj | add-member -membertype NoteProperty -name "Last Update" -value $LastUpdate
+    $obj | add-member -membertype NoteProperty -name "Last Boot" -value $LastBoot
 	$obj | add-member -membertype NoteProperty -name "IP Address" -value $IPAddress
 	$obj | add-member -membertype NoteProperty -name "DNS Servers" -value $DNSServers
 	$obj | add-member -membertype NoteProperty -name "DHCP Enabled" -value $DHCP
@@ -290,6 +288,33 @@ function Get-AssetDetails{
 	return $obj
 }
 
+function Get-MonitorDetails{
+    param (
+		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml"
+    )
+    if ($ConfigFile -ne "" ){
+		#write-host "Using config file: "$configfile
+		[xml] $settings = Get-Content $ConfigFile
+	}
+    if ((test-path "$PSCommandPath\DumpEDID\DumpEDID.exe") -eq $false -and $settings.Settings.DUMPEDID -ne $null) {$DUMPEDID=$settings.Settings.DUMPEDID}else{$DUMPEDID = "$PSCommandPath\DumpEDID\DumpEDID.exe"}
+
+    $Monitors = @()
+    $EDID = invoke-expression $DUMPEDID -ErrorAction SilentlyContinue	
+    $MonitorArray = ($EDID | out-string) -split "`r`n`r`n`r`n`r`n"
+    foreach ($Monitor in $MonitorArray) {
+        if ($Monitor -match "Active"){
+            $MonDetails = $Monitor.split("`r`n") | ? {$_ -match "Active|Monitor Name|Serial Number" -and $_ -notmatch "Numeric"}
+            $Active = [bool] (([string]($MonDetails | ? {$_ -match "Active"})).trim("Active :") -match "Yes")
+            $MonitorObj = new-object PSObject
+	        $MonitorObj | add-member -membertype NoteProperty -name "Name" -value ([string]($MonDetails | ? {$_ -match "Monitor Name"})).trim("Monitor Name :")
+	        $MonitorObj | add-member -membertype NoteProperty -name "Serial Number" -value ([string]($MonDetails | ? {$_ -match "Serial Number"})).trim("Serial Number :")
+            $MonitorObj | add-member -membertype NoteProperty -name "Active" -value $Active
+            $Monitors += $MonitorObj
+        }else{continue}
+    }
+    return $Monitors
+}
+
 Function Get-Software{
 	param (
 		[string]$configFile = $null
@@ -305,7 +330,7 @@ function Get-AllComputers{
 # https://www.powershellgallery.com/packages/HPWarranty/2.6.2
 # Install-Module -Name HPWarranty
 	param (
-		[string]$configFile = $null,
+		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
 		[String]$UseActiveDirectory = $true,
 		[String]$CompanyName = $null,
 		[String]$Directory = $null,
