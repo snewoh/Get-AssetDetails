@@ -31,7 +31,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
    # Get Asset details with aid of a config file
    Get-AssetDetails -configfile .\Config.xml
 #>
-
 function Get-AssetDetails{
 	param (
 		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
@@ -47,10 +46,14 @@ function Get-AssetDetails{
 		[switch]$NoConfigFile = $false,
 		[switch]$FetchWarranty = $false,
 		[switch]$GetNetwork = $true,
+		[switch]$GetMonitors = $true,
 		[switch]$SkipUser = $false,
 		[switch]$GetSoftware = $true
 	)
 	if ($ConfigFile -ne "" ){
+        if ($PSVersionTable.PSVersion.Major -eq 2){
+           # $configFile = "$($MyInvocation.MyCommand.Path)$ConfigFile"
+        }
 		write-host "Using config file: "$configfile
 		[xml] $settings = Get-Content $ConfigFile
 	}
@@ -232,21 +235,27 @@ function Get-AssetDetails{
 	$obj | add-member -membertype NoteProperty -name "Operating System" -value $OS
 	$obj | add-member -membertype NoteProperty -name "Last Update" -value $LastUpdate
     $obj | add-member -membertype NoteProperty -name "Last Boot" -value $LastBoot
-	$obj | add-member -membertype NoteProperty -name "IP Address" -value $IPAddress
-	$obj | add-member -membertype NoteProperty -name "DNS Servers" -value $DNSServers
-	$obj | add-member -membertype NoteProperty -name "DHCP Enabled" -value $DHCP
-	$obj | add-member -membertype NoteProperty -name "MAC Address" -value $MACAddress
 	$obj | add-member -membertype NoteProperty -name "Processor" -value $DETAILSProcessor.Name
 	$obj | add-member -membertype NoteProperty -name "Memory (GB)" -value $Memory
-	$obj | add-member -membertype NoteProperty -name "Powershell Version" -value $PSVersionTable.PSVersion.Major
-    For ($i=0; $i -lt 3; $i++) {
-		if ($EDID -ne $null -and $EDID[$i] -ne $null){
-			$monitor = ([string]$EDID[$i]).trim("Monitor Name :")
-		}else{
-			$monitor = ""
+	$obj | add-member -membertype NoteProperty -name "Powershell Version" -value $([String] $PSVersionTable.PSVersion)
+    if($getNetwork){
+        $NetInfo = Get-AssetNetworkDetails
+        $NetInfo | Get-Member -type NoteProperty | % {
+            $Obj | add-member -MemberType NoteProperty -name $_.Name -Value $NetInfo."$($_.Name)"
+        }
+    }
+    if($getMonitors -eq $true){
+		$Monitors = Get-AssetMonitorDetails | ? {$_.Active -eq $true}
+		for ($i=0; $i -lt 3; $i++){
+			if($Monitors -and $Monitors.count -ge $i){
+				$Model = $Monitors[$i].model
+			}else{
+				$Model = ""
+			}
+			$Obj | add-member -MemberType NoteProperty -name "Monitor $($i+1)" -Value $Model
 		}
-		$obj | add-member -membertype NoteProperty -name "Monitor $($i+1)" -value $monitor; 
-    }	
+	}
+
 	if ($GetSoftware){
 		$software = get-childitem -path registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\  | foreach-object {get-itemproperty $_.PsPath} | select displayname,displayversion
 		$software += get-childitem -path registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\  | foreach-object {get-itemproperty $_.PsPath} | select-object displayname,displayversion
@@ -271,7 +280,7 @@ function Get-AssetDetails{
 		
 		foreach ($key in $importantSoftware.keys){
 			$sw = $software | where-object {$_.displayname -match $importantsoftware.$key.include -and $_.displayname -notmatch $importantsoftware.$key.exclude} | select-object displayname,displayversion -unique
-			$obj | add-member -membertype NoteProperty -name $importantsoftware.$key.Name -value ($sw.DisplayName -join ',')	
+			$obj | add-member -membertype NoteProperty -name $importantsoftware.$key.Name -value (($sw | select -expandproperty DisplayName) -join ',')	
 		}
 	}
     if ($GetFanInfo){
@@ -287,32 +296,152 @@ function Get-AssetDetails{
 	if ($SAVELOCATION) {$obj | export-csv $SAVELOCATION -notypeinformation}
 	return $obj
 }
+function Get-AssetNetworkDetails{
+    param(    
+        [string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
+		[switch]$GetNetwork = $true
 
-function Get-MonitorDetails{
-    param (
-		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml"
-    )
-    if ($ConfigFile -ne "" ){
-		#write-host "Using config file: "$configfile
+	)
+	if ($ConfigFile -ne "" ){
+		write-host "Using config file: "$configfile
 		[xml] $settings = Get-Content $ConfigFile
 	}
-    if ((test-path "$PSCommandPath\DumpEDID\DumpEDID.exe") -eq $false -and $settings.Settings.DUMPEDID -ne $null) {$DUMPEDID=$settings.Settings.DUMPEDID}else{$DUMPEDID = "$PSCommandPath\DumpEDID\DumpEDID.exe"}
+	$cmdName = "Get-CimInstance"
+	if (Get-Command $cmdName -errorAction SilentlyContinue){	
+		$getinfo= $cmdName
+	}else{
+		$getinfo="Get-WMIObject"
+	}
+	$DETAILSNET=Invoke-Expression "$getinfo Win32_NetworkAdapterConfiguration" | 
+            where-object {$_.IPaddress -ne $null} | 
+                select DHCPEnabled,IPaddress, DNSServerSearchOrder,MACAddress,DefaultIPGateway,IPSubnet
+	if($DETAILSNET -isnot [system.array]){$detailsnet = @($detailsnet)}
+	if($DETAILSNET -is [system.array]){
+		$IPAddress    = ($DETAILSNET | % {$_.ipaddress}) -join ', '
+		$DNSServers   = ($DETAILSNET | % {$_.DNSServerSearchOrder}) -join ', '
+		$MACAddress   = ($DETAILSNET | % {$_.MACAddress}) -join ', '
+		$DefGateway   = ($DETAILSNET | % {$_.DefaultIPGateway}) -join ', '
+		$DHCP         = ($DETAILSNET | % {$_.DHCPEnabled}) -join ', '
+        $Subnet       = ($DETAILSNET | % {$_.IPSubnet}) -join ', '
+	}else{
+		$IPAddress= $DETAILSNET.ipaddress  -join ', '
+		$DNSServers= $DETAILSNET.DNSServerSearchOrder  -join ', '
+		$MACAddress = $DETAILSNET.MACAddress
+		$DefGateway = $DETAILSNET.DefaultIPGateway
+		$DHCP = $DETAILSNET.DHCPEnabled
+        $Subnet = $DETAILSNET.IPSubnet
+
+	}
+
+    $NetInfo = New-Object PSObject
+    $NetInfo | Add-Member -MemberType NoteProperty -Name "IP Address" -Value $IPAddress
+    $NetInfo | Add-Member -MemberType NoteProperty -Name "Default Gateway" -Value $DefGateway
+    $NetInfo | Add-Member -MemberType NoteProperty -Name "Subnet Mask" -Value $Subnet
+    $NetInfo | Add-Member -MemberType NoteProperty -Name "MAC Address" -Value $MACAddress
+    $NetInfo | Add-Member -MemberType NoteProperty -Name "DNS Server" -Value $DNSServers
+    $NetInfo | Add-Member -MemberType NoteProperty -Name "DHCP" -Value $DHCP
+    
+    return $NetInfo
+
+}
+function Get-AssetUserDetails{
+	param (
+		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
+		[String]$UseActiveDirectory = $true,
+		[String]$UseOutlookProfile = $false
+
+    )
+    	if ($ConfigFile -ne "" ){
+		write-host "Using config file: "$configfile
+		[xml] $settings = Get-Content $ConfigFile
+	}
+
+	#Get settings from config file:
+	if ($settings.Settings.UserInfo.UseActiveDirectory) {$UseActiveDirectory = $settings.Settings.UserInfo.UseActiveDirectory}
+	if ($settings.Settings.UserInfo.UseOutlookProfile) {$UseOutlookProfile = $settings.Settings.UserInfo.UseOutlookProfile}
+	if ($settings.Settings.Company.CompanyName) {$CompanyName = $settings.Settings.Company.CompanyName}
+	if ($export){$SAVELOCATION = $export}
+	 
+    #Declare User Object
+    $User = new-object PSObject
+
+	### User Information
+	$UserName = $env:UserName
+	#Find User details through ADSI
+	if ($UseActiveDirectory -eq $true){
+		if ($username -eq $null){
+			$username = (get-itemproperty -path registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Authentication\LogonUI  | select-object -expandproperty lastloggedonuser) -creplace '^[^\\]*\\', ''
+		}
+        $ADUser = [adsisearcher]"(samaccountname=$USERNAME)"
+		$User | Add-Member -MemberType NoteProperty -Name "User"     -Value ($UserName)
+		$user | Add-Member -MemberType NoteProperty -Name "Name"     -Value ([String] $ADUser.FindOne().Properties.cn)
+		$User | Add-Member -MemberType NoteProperty -Name "Email"    -Value ([String] $ADUser.FindOne().Properties.mail)
+	}
+    return $user
+}
+function Get-AssetMonitorDetails{
+    param (
+		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
+        [switch]$getUser = $false
+    )
+    if ($ConfigFile -ne "" ){
+		[xml] $settings = Get-Content $ConfigFile
+	}
+    if ((test-path "$(Split-Path -parent $PSCommandPath)\DumpEDID\DumpEDID.exe") -eq $false -and $settings.Settings.DUMPEDID -ne $null){
+		$DUMPEDID=$settings.Settings.DUMPEDID
+	}else{
+		$DUMPEDID = "$(Split-Path -parent $PSCommandPath)\DumpEDID\DumpEDID.exe"
+	}
 
     $Monitors = @()
-    $EDID = invoke-expression $DUMPEDID -ErrorAction SilentlyContinue	
+    if($getUser){$user = Get-AssetUserDetails}
+    $EDID = invoke-expression -command "& '$DUMPEDID'" -ErrorAction SilentlyContinue	
     $MonitorArray = ($EDID | out-string) -split "`r`n`r`n`r`n`r`n"
     foreach ($Monitor in $MonitorArray) {
-        if ($Monitor -match "Active"){
+        if ($Monitor -match "Active" -and $Monitor -match "Monitor Name"){
             $MonDetails = $Monitor.split("`r`n") | ? {$_ -match "Active|Monitor Name|Serial Number" -and $_ -notmatch "Numeric"}
             $Active = [bool] (([string]($MonDetails | ? {$_ -match "Active"})).trim("Active :") -match "Yes")
             $MonitorObj = new-object PSObject
-	        $MonitorObj | add-member -membertype NoteProperty -name "Name" -value ([string]($MonDetails | ? {$_ -match "Monitor Name"})).trim("Monitor Name :")
-	        $MonitorObj | add-member -membertype NoteProperty -name "Serial Number" -value ([string]($MonDetails | ? {$_ -match "Serial Number"})).trim("Serial Number :")
+	        $MonitorObj | add-member -membertype NoteProperty -name "Model" -value ([string]($MonDetails | ? {$_ -match "Monitor Name"})+"").trim("Monitor Name :")
+	        $MonitorObj | add-member -membertype NoteProperty -name "Serial Number" -value ([string]($MonDetails | ? {$_ -match "Serial Number"})+"").trim("Serial Number :")
             $MonitorObj | add-member -membertype NoteProperty -name "Active" -value $Active
-            $Monitors += $MonitorObj
+            if($getUser){
+                $User | Get-Member -type NoteProperty | % {
+                    $MonitorObj | add-member -MemberType NoteProperty -name $_.Name -Value $User."$($_.Name)"
+                }
+            }
+            $Monitors += $MonitorObj           
         }else{continue}
     }
     return $Monitors
+}
+Function Get-AssetSoftwareDetails{
+	$software = get-childitem -path registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\  | foreach-object {get-itemproperty $_.PsPath} | select displayname,displayversion
+	$software += get-childitem -path registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Uninstall\  | foreach-object {get-itemproperty $_.PsPath} | select-object displayname,displayversion
+	
+	$importantSoftware = @{
+		Project = @{
+			Name = "Microsoft Project";
+			include = "Microsoft.*( Project )";
+			exclude = "Update|Service|Visio|MUI"
+		}
+		Visio = @{
+			Name = "Microsoft Visio";
+			include = "Microsoft.*( Visio )";
+			exclude = "Update|Service|Project|MUI"
+		}
+		Office = @{
+			Name = "Microsoft Office";
+			include = "Microsoft Office.*( Standard | Professional )";
+			exclude = "Update|Service|Project|Visio|MUI"
+		}
+	}
+	$SoftwareObj = New-Object PSObject
+	foreach ($key in $importantSoftware.keys){
+		$sw = $software | where-object {$_.displayname -match $importantsoftware.$key.include -and $_.displayname -notmatch $importantsoftware.$key.exclude} | select-object displayname,displayversion -unique
+		$SoftwareObj | add-member -membertype NoteProperty -name $importantsoftware.$key.Name -value (($sw | select -expandproperty DisplayName) -join ',')	
+	}
+    return $SoftwareObj
 }
 
 Function Get-Software{
@@ -324,6 +453,8 @@ Function Get-Software{
 	$obj | add-member -membertype NoteProperty -name "Software" -value $software
 	return $obj
 }
+
+
 
 function Get-AllComputers{
 # Requires module HPWarranty
