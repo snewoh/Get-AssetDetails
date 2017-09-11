@@ -96,6 +96,21 @@ function Get-AssetDetails{
 			Write-host "Not Outlook object found..."
 		}
 	}
+    if ($UseWMIforUserInformation){
+        $users = @()
+        $computer = $env:computername
+        $proc = gwmi win32_process -computer $Computer -Filter "Name = 'explorer.exe'"
+        #Go through collection of processes
+        ForEach ($p in $proc) {
+            $User = "" | Select Computer, Domain, User
+            $User.computer = $computer
+            $User.user = ($p.GetOwner()).User
+            $User.domain = ($p.GetOwner()).Domain
+            $users += $User
+        }
+        $users = $users | Sort-Object -Unique
+
+    }
 
 	#get CimInstance Preferred, if not use get-WmiObject
 	$cmdName = "Get-CimInstance"
@@ -210,9 +225,10 @@ function Get-AssetDetails{
 	$LastUpdate = get-date -format ('yyyy-MM-dd')
 	#Creating array for CSV import
 	$obj = new-object PSObject
-	$obj | add-member -membertype NoteProperty -name "Name" -value $name
-	$obj | add-member -membertype NoteProperty -name "Email" -value $Email
-	$obj | add-member -membertype NoteProperty -name "Username" -value $UserName
+    $User = Get-AssetUserDetails
+    $User | Get-Member -type NoteProperty | % {
+            $Obj | add-member -MemberType NoteProperty -name $_.Name -Value $User."$($_.Name)"
+    }
 	$obj | add-member -membertype NoteProperty -name "Item Name" -value $ItemName
 	$obj | add-member -membertype NoteProperty -name "Category" -value $CATEGORY
 	$obj | add-member -membertype NoteProperty -name "Model Name" -value $DETAILSCOMP.model
@@ -273,7 +289,7 @@ function Get-AssetDetails{
 			}
 			Office = @{
 				Name = "Microsoft Office";
-				include = "Microsoft Office.*( Standard | Professional )";
+				include = "Microsoft Office.*( Standard | Professional | 365 )";
 				exclude = "Update|Service|Project|Visio"
 			}
 		}
@@ -443,7 +459,75 @@ Function Get-AssetSoftwareDetails{
 	}
     return $SoftwareObj
 }
+Function Get-AssetUserDetails{
+    param (
+		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
+		[String]$UseActiveDirectory = $true,
+		[String]$UseOutlookProfile = $false
+    )
 
+    $User = New-Object PSObject
+    $User | Add-Member -MemberType NoteProperty -Name "Name" -Value ""
+    $User | Add-Member -MemberType NoteProperty -Name "Username" -Value ""
+    $User | Add-Member -MemberType NoteProperty -Name "Email" -Value ""
+    $User | Add-member -MemberType NoteProperty -Name "Username 2" -Value ""
+    #Remote Invocation
+    if($PSSenderInfo){
+        $UsersWithSession = @()
+        $computer = $env:computername
+        $proc = gwmi win32_process -Filter "Name = 'explorer.exe'"
+        #Go through collection of processes
+        ForEach ($p in $proc) {
+            $U = "" | Select Computer, Domain, User, CreationDate
+            $U.computer = $computer
+            $U.user = ($p.GetOwner()).User
+            $U.domain = ($p.GetOwner()).Domain
+            $U.CreationDate = $p.CreationDate
+            $UsersWithSession += $U
+        }
+        $users = $UsersWithSession | Sort-Object user, CreationDate | select -Unique user | select -expandproperty user
+        if ($users.count -gt 1){ 
+            $UserName = $users[-1] #last object if array
+            $User."Username 2" = $users[-2] #second last logged on user
+        }else{
+            $UserName = $Users
+        }
+    }else{
+    	### Current logged on user
+	    $UserName = $env:UserName
+    }
+    $User.Username = $UserName
+
+	#Find User details through ADSI
+	if ($UseActiveDirectory -eq $true){
+		if ($username -eq $null){
+			$username = (get-itemproperty -path registry::HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Authentication\LogonUI  | select-object -expandproperty lastloggedonuser) -creplace '^[^\\]*\\', ''
+		}
+		$ADSIUser = [adsisearcher]"(samaccountname=$username)"
+        try{
+		    $User.Name = [String] $ADSIUser.FindOne().Properties.cn
+		    $User.Email = [String] $ADSIUser.FindOne().Properties.mail
+        }catch{
+            $User.Name = ""
+        }
+	}elseif ($UseOutlookProfile -eq $true){
+	    #Find User Details through Default Outlook Profile
+		write-host "Using Outlook for User information"
+		try{
+			$Outlook = (New-Object -comobject Outlook.Application)
+			$OutlookInfo =  $Outlook.Session.Accounts | select-object smtpaddress,UserName,Name
+			$OutlookInfo.name = $Outlook.GetNameSpace("MAPI").Session.currentuser.name
+			$User.UserName = $OutlookInfo.Username
+			$User.Email = $OutlookInfo.smtpaddress
+			$User.Name = $Outlook.GetNameSpace("MAPI").Session.currentuser.name
+		}catch{
+			Write-host "Not Outlook object found..."
+		}
+	}
+
+    return $User
+
+}
 Function Get-Software{
 	param (
 		[string]$configFile = $null
@@ -751,8 +835,13 @@ function Get-AllSoftwareFormatted{
 Function Get-IPOfUser{
 	param (
 			[string]$user = $null,
-			[string]$configFile = $null
+			[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml"
 	)
+
+    if ($ConfigFile -ne "" ){
+		[xml] $settings = Get-Content $ConfigFile
+	}
+
 		
 	if ($ConfigFile -ne "" ){
 		write-host "Using config file: "$configfile
