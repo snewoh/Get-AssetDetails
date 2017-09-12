@@ -49,14 +49,15 @@ function Get-AssetDetails{
 		[switch]$GetMonitors = $true,
 		[switch]$SkipUser = $false,
 		[switch]$GetSoftware = $true
-	)
+	)<#
 	if ($ConfigFile -ne "" ){
         if ($PSVersionTable.PSVersion.Major -eq 2){
            # $configFile = "$($MyInvocation.MyCommand.Path)$ConfigFile"
         }
 		write-host "Using config file: "$configfile
 		[xml] $settings = Get-Content $ConfigFile
-	}
+	}#>
+    $Settings = Get-AssetConfigSettings($configFile)
 
 	#Get settings from config file:
 	if ($settings.Settings.UserInfo.UseActiveDirectory) {$UseActiveDirectory = $settings.Settings.UserInfo.UseActiveDirectory}
@@ -318,10 +319,7 @@ function Get-AssetNetworkDetails{
 		[switch]$GetNetwork = $true
 
 	)
-	if ($ConfigFile -ne "" ){
-		write-host "Using config file: "$configfile
-		[xml] $settings = Get-Content $ConfigFile
-	}
+    $Settings = Get-AssetConfigSettings($configFile)
 	$cmdName = "Get-CimInstance"
 	if (Get-Command $cmdName -errorAction SilentlyContinue){	
 		$getinfo= $cmdName
@@ -367,10 +365,7 @@ function Get-AssetUserDetails{
 		[String]$UseOutlookProfile = $false
 
     )
-    	if ($ConfigFile -ne "" ){
-		write-host "Using config file: "$configfile
-		[xml] $settings = Get-Content $ConfigFile
-	}
+    $Settings = Get-AssetConfigSettings($configFile)
 
 	#Get settings from config file:
 	if ($settings.Settings.UserInfo.UseActiveDirectory) {$UseActiveDirectory = $settings.Settings.UserInfo.UseActiveDirectory}
@@ -400,9 +395,7 @@ function Get-AssetMonitorDetails{
 		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
         [switch]$getUser = $false
     )
-    if ($ConfigFile -ne "" ){
-		[xml] $settings = Get-Content $ConfigFile
-	}
+    $Settings = Get-AssetConfigSettings($configFile)
     if ((test-path "$(Split-Path -parent $PSCommandPath)\DumpEDID\DumpEDID.exe") -eq $false -and $settings.Settings.DUMPEDID -ne $null){
 		$DUMPEDID=$settings.Settings.DUMPEDID
 	}else{
@@ -448,7 +441,7 @@ Function Get-AssetSoftwareDetails{
 		}
 		Office = @{
 			Name = "Microsoft Office";
-			include = "Microsoft Office.*( Standard | Professional )";
+			include = "Microsoft Office.*( Standard | Professional | 365 )";
 			exclude = "Update|Service|Project|Visio|MUI"
 		}
 	}
@@ -461,10 +454,12 @@ Function Get-AssetSoftwareDetails{
 }
 Function Get-AssetUserDetails{
     param (
-		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
+		[string]$configFile,
 		[String]$UseActiveDirectory = $true,
 		[String]$UseOutlookProfile = $false
     )
+
+    $Settings = Get-AssetConfigSettings($configFile)
 
     $User = New-Object PSObject
     $User | Add-Member -MemberType NoteProperty -Name "Name" -Value ""
@@ -537,8 +532,6 @@ Function Get-Software{
 	$obj | add-member -membertype NoteProperty -name "Software" -value $software
 	return $obj
 }
-
-
 
 function Get-AllComputers{
 # Requires module HPWarranty
@@ -832,21 +825,27 @@ function Get-AllSoftwareFormatted{
 	}
 	return $Licenses
 }
+
+Function Get-AssetConfigSettings($configFile){
+    if ($configFile.length -and (test-path $ConfigFile)){
+		$cf = $ConfigFile
+	}elseif($PSCommandPath.length -gt 0){
+        $LocalPath = (join-path $(Split-Path -parent $PSCommandPath) "config.xml" )
+        $cf = $LocalPath
+    }    
+    write-host "Using config file: "$cf
+    [xml] $settings = Get-Content $cf
+    return $settings
+}
+
 Function Get-IPOfUser{
 	param (
 			[string]$user = $null,
-			[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml"
+			[string]$configFile
 	)
 
-    if ($ConfigFile -ne "" ){
-		[xml] $settings = Get-Content $ConfigFile
-	}
+    $Settings = Get-AssetConfigSettings($configFile)
 
-		
-	if ($ConfigFile -ne "" ){
-		write-host "Using config file: "$configfile
-		[xml] $settings = Get-Content $ConfigFile
-	}
 	if ($Settings.settings.Company.OutPutFilePrefix){
 		$FilterString = "*"+$settings.Settings.Company.OutPutFilePrefix+"*.csv"
 	}elseif(!$Filter){
@@ -866,7 +865,7 @@ Function Get-IPOfUser{
 	}
 	$Computers = Get-ChildItem $Directory | where-object {$_.fullname -like $FilterString -and $_.fullname -notmatch $SaveName} | sort-object LastWriteTime -desc | select -expandproperty fullname | import-csv
 	$ComputersOfUser = $computers | where-object {$_.Username -eq $user}
-	write-host "Computers to search for IPs:"$computersofuser."Asset Tag"
+	write-host "Computers to search for IPs:$($computersofuser | select -expandproperty "Asset Tag")"
 	$separator=","," "
 	#$IPs = ($computersOfUser."ip address") | foreach {if($_ -ne $null){$_.split($separator)}} | where-object {$_ -ne " " -and $_ -ne ""}
 	$IPs = ($computersOfUser) | foreach {if($_."ip address" -ne $null){$_."ip address".split($separator)}} | where-object {$_ -ne " " -and $_ -ne ""}
