@@ -187,7 +187,7 @@ function Get-AssetDetails{
     if($getNetwork){
         $NetInfo = Get-AssetNetworkDetails
     }
-    $Location = Get-AssetLocationDetails($settings,$NetInfo)
+    $Location = Get-AssetLocationDetails($ConfigFile,$NetInfo)
 	#Location Based on IP Address
 	#Trying HP Warranty
 	if ($FetchWarranty){
@@ -816,7 +816,7 @@ Function Get-AssetConfigSettings($configFile){
     return $settings
 }
 
-Function Get-AssetLocationDetails($settings,$NetworkInfo){
+Function Get-AssetLocationDetails($ConfigFile,$NetworkInfo){
     if (!$settings) {$Settings = Get-AssetConfigSettings($configFile)}
     
     if($Settings.settings.Locations.UseActiveDirectory){ 
@@ -831,7 +831,7 @@ Function Get-AssetLocationDetails($settings,$NetworkInfo){
         [System.DirectoryServices.SearchResult]$result = $searcher.FindOne()
         $dn = $result.Properties["distinguishedName"]
         $ou = $dn.Substring($ComputerName.Length + 4)
-        $Location = (($ou -split ",OU=$($Settings.Settings.Location.LastOU)")[0] -replace "OU=","" -replace " Computers","" -split "," | sort -descending) -join "."
+        $Location = (($ou -split ",OU=$($Settings.Settings.Locations.LastOU)")[0] -replace "OU=","" -replace " Computers","" -split "," | sort -descending) -join "."
     }elseif($settings.Settings.UseIPAddressForLocation){ #Location Based on IP Address
         if($NetworkInfo -eq $false){$NetworkInfo = Get-AssetNetworkDetails}
         $DefaultGateway = $NetworkInfo."Default Gateway"
