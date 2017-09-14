@@ -831,7 +831,7 @@ Function Get-AssetLocationDetails($settings,$NetworkInfo){
         [System.DirectoryServices.SearchResult]$result = $searcher.FindOne()
         $dn = $result.Properties["distinguishedName"]
         $ou = $dn.Substring($ComputerName.Length + 4)
-        $Location = (($ou -split ",OU=CELT")[0] -replace "OU=","" -replace " Computers","" -split "," | sort -descending) -join "."
+        $Location = (($ou -split ",OU=$($Settings.Settings.Location.LastOU)")[0] -replace "OU=","" -replace " Computers","" -split "," | sort -descending) -join "."
     }elseif($settings.Settings.UseIPAddressForLocation){ #Location Based on IP Address
         if($NetworkInfo -eq $false){$NetworkInfo = Get-AssetNetworkDetails}
         $DefaultGateway = $NetworkInfo."Default Gateway"
