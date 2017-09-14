@@ -49,14 +49,8 @@ function Get-AssetDetails{
 		[switch]$GetMonitors = $true,
 		[switch]$SkipUser = $false,
 		[switch]$GetSoftware = $true
-	)<#
-	if ($ConfigFile -ne "" ){
-        if ($PSVersionTable.PSVersion.Major -eq 2){
-           # $configFile = "$($MyInvocation.MyCommand.Path)$ConfigFile"
-        }
-		write-host "Using config file: "$configfile
-		[xml] $settings = Get-Content $ConfigFile
-	}#>
+	)
+    
     $Settings = Get-AssetConfigSettings($configFile)
 
 	#Get settings from config file:
@@ -157,7 +151,7 @@ function Get-AssetDetails{
 		"600|6200|6300|Desk|desk|Veriton|Compaq Elite" 		{$CATEGORY="Desktop"}
 		"640|1040|947|Book|book" 							{$CATEGORY="Laptop"}
         "Surface"											{$CATEGORY="2 in 1"}
-		"VMware"											{$CATEGORY="Server"}
+		"VMware|Hyper"									    {$CATEGORY="Server"}
 		default 											{$CATEGORY="Unknown"}
 	}
 	#manufacturer specific information gathering
@@ -190,11 +184,11 @@ function Get-AssetDetails{
 		$OSInstallDate = $detailsos.converttodatetime($detailsOS.installdate).ToString('yyyy-MM-dd')
 		#$DefRoute= Get-WmiObject -Class Win32_IP4RouteTable | where { $_.destination -eq '0.0.0.0' -and $_.mask -eq '0.0.0.0'} | Sort-Object metric1 |  select-object -expandProperty nexthop
 	}
+    if($getNetwork){
+        $NetInfo = Get-AssetNetworkDetails
+    }
+    $Location = Get-AssetLocationDetails($settings,$NetInfo)
 	#Location Based on IP Address
-	if ($settings.Settings.UseIPAddressForLocation){
-		$Location = ($settings.Settings.Locations.Location | where-object {$DefGateway -match $_.IP}) | select -expandproperty name
-		if ($Location -is [system.array]) {$location = $location -join ', '}
-	}
 	#Trying HP Warranty
 	if ($FetchWarranty){
 		try {
@@ -256,7 +250,7 @@ function Get-AssetDetails{
 	$obj | add-member -membertype NoteProperty -name "Memory (GB)" -value $Memory
 	$obj | add-member -membertype NoteProperty -name "Powershell Version" -value $([String] $PSVersionTable.PSVersion)
     if($getNetwork){
-        $NetInfo = Get-AssetNetworkDetails
+        #$NetInfo = Get-AssetNetworkDetails
         $NetInfo | Get-Member -type NoteProperty | % {
             $Obj | add-member -MemberType NoteProperty -name $_.Name -Value $NetInfo."$($_.Name)"
         }
@@ -317,7 +311,6 @@ function Get-AssetNetworkDetails{
     param(    
         [string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
 		[switch]$GetNetwork = $true
-
 	)
     $Settings = Get-AssetConfigSettings($configFile)
 	$cmdName = "Get-CimInstance"
@@ -396,6 +389,7 @@ function Get-AssetMonitorDetails{
         [switch]$getUser = $false
     )
     $Settings = Get-AssetConfigSettings($configFile)
+    
     if ((test-path "$(Split-Path -parent $PSCommandPath)\DumpEDID\DumpEDID.exe") -eq $false -and $settings.Settings.DUMPEDID -ne $null){
 		$DUMPEDID=$settings.Settings.DUMPEDID
 	}else{
@@ -523,22 +517,13 @@ Function Get-AssetUserDetails{
     return $User
 
 }
-Function Get-Software{
-	param (
-		[string]$configFile = $null
-	)
-	$software = (Get-AssetDetails).software -split ','
-	$obj = new-object PSObject
-	$obj | add-member -membertype NoteProperty -name "Software" -value $software
-	return $obj
-}
 
 function Get-AllComputers{
 # Requires module HPWarranty
 # https://www.powershellgallery.com/packages/HPWarranty/2.6.2
 # Install-Module -Name HPWarranty
 	param (
-		[string]$configFile = "$(Split-Path -parent $PSCommandPath)\config.xml",
+		[string]$configFile,
 		[String]$UseActiveDirectory = $true,
 		[String]$CompanyName = $null,
 		[String]$Directory = $null,
@@ -552,10 +537,8 @@ function Get-AllComputers{
 		[switch]$FetchWarranty = $false,
 		[switch]$GetNetwork = $true
 	)
-	if ($ConfigFile -ne "" ){
-		write-host "Using config file: "$configfile
-		[xml] $settings = Get-Content $ConfigFile
-	}
+	
+    $Settings = Get-AssetConfigSettings($configFile)
 	
 	if ($settings.Settings.UserInfo.UseActiveDirectory) {$UseActiveDirectory = $settings.Settings.UserInfo.UseActiveDirectory}
 	if ($settings.Settings.UserInfo.UseIPAddressForLocation) {$UseIPAddressForLocation = $settings.Settings.UserInfo.UseActiveDirectory}
@@ -632,8 +615,6 @@ function Get-AllComputers{
 						}else{
 							$computer | add-member -membertype NoteProperty -name "Warranty End" -value $computerAlreadyImported."Warranty End"
 						}
-				#		$computer."Warranty End" = 
-				#		$computer."Warranty Start" = 
 						break WarrantyBreak
 					}
 				}
@@ -702,10 +683,7 @@ function Get-AllSoftware{
 		[switch]$NoConfigFile = $false,
 		[switch]$count = $false
 	)
-	if ($ConfigFile -ne "" ){
-		write-host "Using config file: "$configfile
-		[xml] $settings = Get-Content $ConfigFile
-	}
+	$Settings = Get-AssetConfigSettings($configFile)
 	
 	if ($settings.Settings.UserInfo.UseActiveDirectory) {$UseActiveDirectory = $settings.Settings.UserInfo.UseActiveDirectory}
 	if ($settings.Settings.UserInfo.UseIPAddressForLocation) {$UseIPAddressForLocation = $settings.Settings.UserInfo.UseActiveDirectory}
@@ -759,10 +737,8 @@ function Get-AllSoftwareFormatted{
 		$computers = $null,
 		$format = "csv"
 	)
-	if ($ConfigFile -ne "" ){
-		write-host "Using config file: "$configfile
-		[xml] $settings = Get-Content $ConfigFile
-	}
+	$Settings = Get-AssetConfigSettings($configFile)
+    
 	if ($settings.Settings.UserInfo.UseActiveDirectory) {$UseActiveDirectory = $settings.Settings.UserInfo.UseActiveDirectory}
 	if ($settings.Settings.UserInfo.UseIPAddressForLocation) {$UseIPAddressForLocation = $settings.Settings.UserInfo.UseActiveDirectory}
 	if ($settings.Settings.Company.CompanyName) {$CompanyName = $settings.Settings.Company.CompanyName}
@@ -828,14 +804,41 @@ function Get-AllSoftwareFormatted{
 
 Function Get-AssetConfigSettings($configFile){
     if ($configFile.length -and (test-path $ConfigFile)){
+		write-output "Config File specified in command line"
 		$cf = $ConfigFile
 	}elseif($PSCommandPath.length -gt 0){
         $LocalPath = (join-path $(Split-Path -parent $PSCommandPath) "config.xml" )
+		write-output "looking for local config file"
         $cf = $LocalPath
     }    
     write-host "Using config file: "$cf
     [xml] $settings = Get-Content $cf
     return $settings
+}
+
+Function Get-AssetLocationDetails($settings,$NetworkInfo){
+    if (!$settings) {$Settings = Get-AssetConfigSettings($configFile)}
+    
+    if($Settings.settings.Locations.UseActiveDirectory){ 
+        $rootDse = New-Object System.DirectoryServices.DirectoryEntry("LDAP://RootDSE")
+        $Domain = $rootDse.DefaultNamingContext
+        $root = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$Domain")
+        if ($PSCmdlet.ParameterSetName -ne "ComputerName"){
+            $ComputerName = $env:COMPUTERNAME
+        }
+        $searcher = New-Object System.DirectoryServices.DirectorySearcher($root)
+        $searcher.Filter = "(&(objectClass=computer)(name=$ComputerName))"
+        [System.DirectoryServices.SearchResult]$result = $searcher.FindOne()
+        $dn = $result.Properties["distinguishedName"]
+        $ou = $dn.Substring($ComputerName.Length + 4)
+        $Location = (($ou -split ",OU=CELT")[0] -replace "OU=","" -replace " Computers","" -split "," | sort -descending) -join "."
+    }elseif($settings.Settings.UseIPAddressForLocation){ #Location Based on IP Address
+        if($NetworkInfo -eq $false){$NetworkInfo = Get-AssetNetworkDetails}
+        $DefaultGateway = $NetworkInfo."Default Gateway"
+    	$Location = ($settings.Settings.Locations.Location | where-object {$DefGateway -match $_.IP}) | select -expandproperty name
+    	if ($Location -is [system.array]) {$location = $location -join ', '}
+    }
+    return $Location
 }
 
 Function Get-IPOfUser{
@@ -864,7 +867,7 @@ Function Get-IPOfUser{
 		$Savename = Read-Host 'Please the name of the existing file if it exists'
 	}
 	$Computers = Get-ChildItem $Directory | where-object {$_.fullname -like $FilterString -and $_.fullname -notmatch $SaveName} | sort-object LastWriteTime -desc | select -expandproperty fullname | import-csv
-	$ComputersOfUser = $computers | where-object {$_.Username -eq $user}
+	$ComputersOfUser = $computers | where-object {$_.Username.split('@')[0] -eq $user}
 	write-host "Computers to search for IPs:$($computersofuser | select -expandproperty "Asset Tag")"
 	$separator=","," "
 	#$IPs = ($computersOfUser."ip address") | foreach {if($_ -ne $null){$_.split($separator)}} | where-object {$_ -ne " " -and $_ -ne ""}
