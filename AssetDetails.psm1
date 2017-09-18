@@ -275,12 +275,12 @@ function Get-AssetDetails{
 			Project = @{
 				Name = "Microsoft Project";
 				include = "Microsoft.*( Project )";
-				exclude = "Update|Service|Visio"
+				exclude = "Update|Service|Visio|VisualStudio"
 			}
 			Visio = @{
 				Name = "Microsoft Visio";
 				include = "Microsoft.*( Visio )";
-				exclude = "Update|Service|Project"
+				exclude = "Update|Service|Project|MUI"
 			}
 			Office = @{
 				Name = "Microsoft Office";
@@ -494,7 +494,7 @@ Function Get-AssetUserDetails{
 		}
 		$ADSIUser = [adsisearcher]"(samaccountname=$username)"
         try{
-		    $User.Name = [String] $ADSIUser.FindOne().Properties.cn
+		    $User.Name = [String] $ADSIUser.FindOne().Properties.displayname
 		    $User.Email = [String] $ADSIUser.FindOne().Properties.mail
         }catch{
             $User.Name = ""
