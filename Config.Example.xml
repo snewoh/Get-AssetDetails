@@ -19,6 +19,7 @@
 	<Locations>
 		<UseActiveDirectory>true</UseActiveDirectory><!-->Sets location by OU - probably the better method unless computers are mobile
 															If this is the case, best to leave out the Main Office subnet below		<-->
+		<LastOU>Domain Computers</LastOU><!-->Location by OU tracks OU in reverse order from the OU after this one<-->
 		<!-->Format:
 			<Location><Name>Location</Name>			<IP>Default Gateway</IP></Location>
 		<-->
