@@ -16,16 +16,9 @@
 	<UseIPAddressForLocation>true</UseIPAddressForLocation><!-->Default Gateway could determine items location, use Locations below<-->
 	<UpdateWarranty>true</UpdateWarranty>
 	<DUMPEDID>\\File-Server01\Audit$\dumpedid.exe</DUMPEDID><!-->DumpEDID.exe obtained from http://www.nirsoft.net/utils/dump_edid.html<-->
-	<Licenses>
-		<software><name>Microsoft Office Professional Plus 2010</name><Seats>41</Seats></software>
-		<software><name>Microsoft Office Professional Plus 2013</name><Seats>63</Seats></software>
-		<software><name>Microsoft Office Professional Plus 2016</name><Seats>5</Seats></software>
-		<software><name>Microsoft Office Standard 2013</name><Seats>33</Seats></software>
-		<software><name>Microsoft Office Standard 2016</name><Seats>12</Seats></software>
-		<software><name>Microsoft Visio Standard 2013</name><Seats>3</Seats></software>
-		<software><name>Microsoft Visio Standard 2016</name><Seats>1</Seats></software>
-	</Licenses>
 	<Locations>
+		<UseActiveDirectory>true</UseActiveDirectory><!-->Sets location by OU - probably the better method unless computers are mobile
+															If this is the case, best to leave out the Main Office subnet below		<-->
 		<!-->Format:
 			<Location><Name>Location</Name>			<IP>Default Gateway</IP></Location>
 		<-->

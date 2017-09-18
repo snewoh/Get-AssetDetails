@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Folders clsid="{77CC39E7-3D16-4f8f-AF86-EC0BBEE2C861}"><Folder clsid="{07DA02F5-F9CD-4397-A550-4AE21B6B4BD3}" name="AssetDetails" status="AssetDetails" image="0" changed="2017-08-11 02:18:34" uid="{2E7AF1E1-6EE5-405D-A349-7F5D5372F6FC}"><Properties action="C" path="%ProgramFilesDir%\WindowsPowerShell\Modules\AssetDetails" readOnly="0" archive="1" hidden="0"/></Folder>
+	<Folder clsid="{07DA02F5-F9CD-4397-A550-4AE21B6B4BD3}" name="DumpEDID" status="DumpEDID" image="0" changed="2017-08-28 05:16:42" uid="{B1DF7491-5514-4750-81D0-F3E0477DF29C}"><Properties action="C" path="%ProgramFilesDir%\WindowsPowerShell\Modules\AssetDetails\DumpEDID" readOnly="0" archive="1" hidden="0"/></Folder>
+</Folders>
